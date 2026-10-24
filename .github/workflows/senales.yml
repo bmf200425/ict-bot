@@ -1,0 +1,53 @@
+name: Señales ICT
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      notify_all:
+        description: "Enviar también los NO OPERAR a Telegram (para probar)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: senales
+  cancel-in-progress: false
+
+jobs:
+  analizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Analizar BTC y ETH
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.notify_all }}" = "true" ]; then
+            python ict_signal_bot.py --once --notify-all
+          else
+            python ict_signal_bot.py --once
+          fi
+
+      - name: Guardar memoria de señales enviadas
+        run: |
+          if [ -n "$(git status --porcelain ict_bot_state.json)" ]; then
+            git config user.name "ict-bot"
+            git config user.email "ict-bot@users.noreply.github.com"
+            git add ict_bot_state.json
+            git commit -m "Actualizar señales enviadas"
+            git pull --rebase && git push
+          fi
